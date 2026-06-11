@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>چسبون عمودی مانهوا</title>
+    <style>
+        /* استایل ساده و کاربردی برای موبایل */
+        body {
+            font-family: 'Tahoma', sans-serif;
+            background: #1a1a1a;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+        h2 {
+            color: #ffcc00;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        .preview-area {
+            background: #2a2a2a;
+            border: 2px dashed #555;
+            border-radius: 15px;
+            padding: 15px;
+            margin: 15px 0;
+            min-height: 150px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            justify-content: center;
+            align-items: center;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .thumb {
+            height: 80px;
+            border-radius: 5px;
+            border: 1px solid #444;
+        }
+        .btn {
+            background: #ffcc00;
+            color: #000;
+            border: none;
+            padding: 15px 25px;
+            margin: 10px 5px;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            width: 90%;
+            max-width: 250px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn:active { transform: scale(0.95); opacity: 0.8; }
+        .btn:disabled { background: #555; color: #aaa; cursor: not-allowed; }
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #ffcc00;
+            color: #ffcc00;
+        }
+        .status {
+            margin: 15px 0;
+            font-size: 0.9rem;
+            color: #aaa;
+            min-height: 25px;
+        }
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>🧩 چسبون مانهوا (عمودی)</h2>
+
+    <!-- پیش‌نمایش عکس‌های انتخاب‌شده -->
+    <div class="preview-area" id="previewContainer">
+        <span style="color:#777;">عکسی انتخاب نشده</span>
+    </div>
+
+    <div class="status" id="statusMessage">آماده برای انتخاب تصاویر</div>
+
+    <!-- دکمه‌ها -->
+    <button class="btn" onclick="document.getElementById('imageInput').click()">
+        📂 انتخاب عکس‌ها
+    </button>
+    <input type="file" id="imageInput" accept="image/*" multiple>
+
+    <button class="btn" id="stitchBtn" disabled onclick="stitchImages()">
+        ✂️ چسبوندن و ساختن فایل
+    </button>
+
+    <button class="btn btn-outline" id="shareBtn" disabled onclick="shareResult()">
+        📤 اشتراک‌گذاری (روبیکا و...)
+    </button>
+
+    <button class="btn btn-outline" id="downloadBtn" disabled onclick="downloadResult()">
+        💾 ذخیره در گالری
+    </button>
+
+    <!-- مخفی برای نگهداری عکس‌های انتخاب‌شده و خروجی -->
+    <canvas id="outputCanvas" style="display: none;"></canvas>
+</div>
+
+<script>
+    // متغیرهای سراسری
+    let selectedFiles = [];
+    let finalBlob = null; // فایل نهایی PNG برای اشتراک و دانلود
+
+    // عناصر DOM
+    const imageInput = document.getElementById('imageInput');
+    const previewContainer = document.getElementById('previewContainer');
+    const stitchBtn = document.getElementById('stitchBtn');
+    const shareBtn = document.getElementById('shareBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const statusDiv = document.getElementById('statusMessage');
+    const canvas = document.getElementById('outputCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false }); // بدون شفافیت برای سرعت بیشتر و جلوگیری از تغییر کیفیت
+
+    // غیرفعال کردن صاف‌کنندگی (حفظ کیفیت پیکسل‌ها)
+    ctx.imageSmoothingEnabled = false;
+
+    // رویداد: انتخاب فایل
+    imageInput.addEventListener('change', (event) => {
+        const files = Array.from(event.target.files);
+        if (files.length === 0) return;
+
+        // اعتبارسنجی: فقط عکس
+        const imageFiles = files.filter(file => file.type.startsWith('image/'));
+        if (imageFiles.length === 0) {
+            alert('لطفاً فقط فایل عکس انتخاب کنید.');
+            return;
+        }
+
+        // ذخیره و نمایش پیش‌نمایش
+        selectedFiles = imageFiles;
+        updatePreview();
+        
+        // فعال کردن دکمه چسبوندن
+        stitchBtn.disabled = false;
+        statusDiv.textContent = `${selectedFiles.length} عکس انتخاب شد. می‌تونی بچسبونی.`;
+        
+        // غیرفعال کردن دکمه‌های خروجی تا ساخته شدن عکس جدید
+        shareBtn.disabled = true;
+        downloadBtn.disabled = true;
+        finalBlob = null;
+    });
+
+    // نمایش پیش‌نمایش تصاویر کوچک
+    function updatePreview() {
+        previewContainer.innerHTML = '';
+        if (selectedFiles.length === 0) {
+            previewContainer.innerHTML = '<span style="color:#777;">عکسی انتخاب نشده</span>';
+            return;
+        }
+        selectedFiles.forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.className = 'thumb';
+                img.title = file.name;
+                previewContainer.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // تابع اصلی: چسبوندن عمودی بدون فاصله
+    async function stitchImages() {
+        if (selectedFiles.length === 0) return;
+
+        stitchBtn.disabled = true;
+        shareBtn.disabled = true;
+        downloadBtn.disabled = true;
+        statusDiv.textContent = '⏳ در حال پردازش عکس‌ها با کیفیت اصلی...';
+
+        try {
+            // 1. بارگذاری همه عکس‌ها به صورت Image عنصر
+            const images = await loadAllImages(selectedFiles);
+            
+            // 2. محاسبه ابعاد نهایی (عرض = بیشترین عرض، ارتفاع = مجموع ارتفاع‌ها)
+            let maxWidth = 0;
+            let totalHeight = 0;
+            const imageDataArray = []; // ذخیره آبجکت‌های عکس برای رسم
+
+            images.forEach((img) => {
+                const w = img.naturalWidth;
+                const h = img.naturalHeight;
+                if (w > maxWidth) maxWidth = w;
+                totalHeight += h;
+                imageDataArray.push({ img, w, h });
+            });
+
+            // بررسی ابعاد (برای جلوگیری از خطای حافظه در مرورگر موبایل)
+            // اغلب مرورگرها محدودیت ۱۶۳۸۴ پیکسل در هر بعد دارند.
+            if (maxWidth > 16384 || totalHeight > 16384) {
+                const reduceRatio = Math.min(16384 / maxWidth, 16384 / totalHeight);
+                if (reduceRatio < 1) {
+                    statusDiv.textContent = '⚠️ عکس نهایی خیلی بزرگه، کمی کیفیت کاهش می‌یابد تا قابل پردازش باشد...';
+                    // کاهش ابعاد (اگر نخوای کیفیت کم بشه این بخش رو می‌تونی برداری ولی ممکنه کرش کنه)
+                    maxWidth = Math.floor(maxWidth * reduceRatio);
+                    totalHeight = Math.floor(totalHeight * reduceRatio);
+                    // به‌روزرسانی مقادیر imageDataArray با نسبت جدید
+                    imageDataArray.forEach(item => {
+                        item.w = Math.floor(item.w * reduceRatio);
+                        item.h = Math.floor(item.h * reduceRatio);
+                    });
+                    // دوباره مجموع ارتفاع رو دقیق حساب کن
+                    totalHeight = imageDataArray.reduce((sum, item) => sum + item.h, 0);
+                }
+            }
+
+            // 3. تنظیم کانواس
+            canvas.width = maxWidth;
+            canvas.height = totalHeight;
+            
+            // زمینه کانواس را سیاه (یا سفید) بگذاریم؛ ولی عکس‌ها کامل روی آن رسم می‌شوند
+            ctx.fillStyle = '#ffffff'; // یا '#000000' بسته به سلیقه‌ات. سفید خنثی‌تره.
+            ctx.fillRect(0, 0, maxWidth, totalHeight);
+            ctx.imageSmoothingEnabled = false; // حفظ تیزی پیکسل‌ها
+
+            // 4. رسم عکس‌ها یکی پس از دیگری به صورت عمودی
+            let currentY = 0;
+            for (let item of imageDataArray) {
+                // عکس را در مرکز عرض بکشیم (یا چپ‌چین). معمولاً مانهوا بهتره وسط‌چین بشه.
+                const x = (maxWidth - item.w) / 2;
+                ctx.drawImage(item.img, x, currentY, item.w, item.h);
+                currentY += item.h; // هیچ فاصله‌ای اضافه نمیشه
+            }
+
+            // 5. گرفتن خروجی Blob (بدون افت کیفیت PNG)
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    statusDiv.textContent = '❌ خطا در ساخت فایل.';
+                    stitchBtn.disabled = false;
+                    return;
+                }
+                finalBlob = blob;
+                statusDiv.textContent = `✅ عکس نهایی آماده شد! (${(blob.size / 1024 / 1024).toFixed(2)} مگابایت)`;
+                
+                // فعال کردن دکمه‌های خروجی
+                shareBtn.disabled = false;
+                downloadBtn.disabled = false;
+                stitchBtn.disabled = false; // اجازه بده دوباره بسازه
+            }, 'image/png', 1.0); // کیفیت 1.0 برای PNG (بدون افت)
+            
+        } catch (error) {
+            console.error(error);
+            statusDiv.textContent = '❌ خطا: ' + error.message;
+            stitchBtn.disabled = false;
+        }
+    }
+
+    // کمک‌کننده: بارگذاری تمام عکس‌ها از فایل
+    function loadAllImages(files) {
+        const promises = files.map((file) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => reject(new Error(`بارگذاری ${file.name} شکست خورد`));
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => reject(new Error('خواندن فایل شکست خورد'));
+                reader.readAsDataURL(file);
+            });
+        });
+        return Promise.all(promises);
+    }
+
+    // تابع اشتراک‌گذاری (روبیکا، واتساپ، تلگرام و ...)
+    async function shareResult() {
+        if (!finalBlob) {
+            alert('اول باید عکس چسبونده شده رو بسازی!');
+            return;
+        }
+        
+        // ساخت یک فایل با نام مناسب
+        const file = new File([finalBlob], "manhwa_stitched.png", { type: "image/png" });
+        
+        if (navigator.share && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: 'مانهوای چسبیده',
+                    text: 'عکس عمودی مانهوا آماده شد.'
+                });
+                statusDiv.textContent = '📤 اشتراک‌گذاری انجام شد.';
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error(err);
+                    alert('اشتراک‌گذاری با خطا مواجه شد. شاید مرورگرت پشتیبانی نکنه. از دکمه ذخیره استفاده کن.');
+                }
+            }
+        } else {
+            // اگر Web Share API پشتیبانی نشود (مثلاً بعضی مرورگرها)، مستقیم دانلود می‌کنیم
+            alert('اشتراک‌گذاری مستقیم توسط مرورگرت پشتیبانی نمی‌شود. عکس رو ذخیره کن و بعداً در روبیکا بفرست.');
+            downloadResult();
+        }
+    }
+
+    // تابع ذخیره در گالری (دانلود)
+    function downloadResult() {
+        if (!finalBlob) {
+            alert('اول عکس چسبیده رو بساز!');
+            return;
+        }
+        
+        const url = URL.createObjectURL(finalBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `manhwa_stitched_${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        statusDiv.textContent = '💾 عکس با موفقیت ذخیره شد (گالری/دانلود).';
+    }
+
+    // تنظیم اولیه
+    statusDiv.textContent = 'آماده برای چسبوندن عمودی عکس‌ها';
+</script>
+</body>
+</html>
